@@ -1,0 +1,33 @@
+From acf8bb9b1330da4ba0ebd8e0bfb65b3b69cf2d69 Mon Sep 17 00:00:00 2001
+From: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+Date: Fri, 7 Apr 2017 12:17:44 +0200
+Subject: [PATCH 5/5] imx27: enable USB_DIV clock
+
+i.MX27's usb needs three clocks (usb_ipg_gate, usb_ahb_gate and usb_misc)
+but the current chipidea driver implementation, and devicetree, provides
+only ipg and ahb. Consequently, if the bootloader don't enable the last
+one, the kernel will crash.
+
+This patch is an temporary solution to enable usb_div.
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+Signed-off-by: Julien Corjon <corjon.j@ecagroup.com>
+---
+ drivers/clk/imx/clk-imx27.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/clk/imx/clk-imx27.c b/drivers/clk/imx/clk-imx27.c
+index 2f241f4..edc9309 100644
+--- a/drivers/clk/imx/clk-imx27.c
++++ b/drivers/clk/imx/clk-imx27.c
+@@ -173,6 +173,7 @@ static void __init _mx27_clocks_init(unsigned long fref)
+ 	clk_register_clkdev(clk[IMX27_CLK_CPU_DIV], NULL, "cpu0");
+ 
+ 	clk_prepare_enable(clk[IMX27_CLK_EMI_AHB_GATE]);
++	clk_prepare_enable(clk[IMX27_CLK_USB_DIV]);
+ 
+ 	imx_register_uart_clocks(uart_clks);
+ 
+-- 
+2.9.3
+

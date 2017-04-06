@@ -1,0 +1,39 @@
+From 4e95c80599cc4bded6b40d02f3011e72ceb8ad98 Mon Sep 17 00:00:00 2001
+From: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+Date: Fri, 7 Apr 2017 12:07:48 +0200
+Subject: [PATCH 3/5] chipidea: add node to select clk phy
+
+---
+ drivers/usb/chipidea/ci_hdrc_imx.c | 3 +++
+ drivers/usb/chipidea/ci_hdrc_imx.h | 1 +
+ 2 files changed, 4 insertions(+)
+
+diff --git a/drivers/usb/chipidea/ci_hdrc_imx.c b/drivers/usb/chipidea/ci_hdrc_imx.c
+index 5f4a815..d8b2d85 100644
+--- a/drivers/usb/chipidea/ci_hdrc_imx.c
++++ b/drivers/usb/chipidea/ci_hdrc_imx.c
+@@ -150,6 +150,9 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
+ 	if (of_usb_get_phy_mode(np) == USBPHY_INTERFACE_MODE_ULPI)
+ 		data->ulpi = 1;
+ 
++	if (!of_find_property(np, "ext-clk-en", NULL))
++		data->ext_clk_en = 1;
++
+ 	return data;
+ }
+ 
+diff --git a/drivers/usb/chipidea/ci_hdrc_imx.h b/drivers/usb/chipidea/ci_hdrc_imx.h
+index d666c9f..fa8fdad 100644
+--- a/drivers/usb/chipidea/ci_hdrc_imx.h
++++ b/drivers/usb/chipidea/ci_hdrc_imx.h
+@@ -19,6 +19,7 @@ struct imx_usbmisc_data {
+ 	unsigned int disable_oc:1; /* over current detect disabled */
+ 	unsigned int oc_polarity:1; /* over current polarity if oc enabled */
+ 	unsigned int evdo:1; /* set external vbus divider option */
++	unsigned int ext_clk_en:1; /* select the clock from external PHY*/
+ 	unsigned int ulpi:1; /* connected to an ULPI phy */
+ };
+ 
+-- 
+2.9.3
+

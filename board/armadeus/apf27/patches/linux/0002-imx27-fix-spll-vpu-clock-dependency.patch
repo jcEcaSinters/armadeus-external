@@ -1,0 +1,30 @@
+From 875fc7a4913272c8311658a7ef6e6881681adaa4 Mon Sep 17 00:00:00 2001
+From: Julien Boibessot <julien.boibessot@armadeus.com>
+Date: Fri, 7 Apr 2017 12:02:14 +0200
+Subject: [PATCH 2/5] imx27: fix spll vpu clock dependency
+
+Otherwise using VPU doesn't activate SPLL (if not already up with USB
+for example) and VPU firmware loading crashes at first coda_write().
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+Signed-off-by: Julien Corjon <corjon.j@ecagroup.com>
+---
+ drivers/clk/imx/clk-imx27.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/clk/imx/clk-imx27.c b/drivers/clk/imx/clk-imx27.c
+index cf5cf75..2f241f4 100644
+--- a/drivers/clk/imx/clk-imx27.c
++++ b/drivers/clk/imx/clk-imx27.c
+@@ -29,7 +29,7 @@ static void __iomem *ccm __initdata;
+ #define CCM_PCCR1		(ccm + 0x24)
+ #define CCM_CCSR		(ccm + 0x28)
+ 
+-static const char *vpu_sel_clks[] = { "spll", "mpll_main2", };
++static const char *vpu_sel_clks[] = { "spll_gate", "mpll_main2", };
+ static const char *cpu_sel_clks[] = { "mpll_main2", "mpll", };
+ static const char *mpll_sel_clks[] = { "fpm", "mpll_osc_sel", };
+ static const char *mpll_osc_sel_clks[] = { "ckih_gate", "ckih_div1p5", };
+-- 
+2.9.3
+

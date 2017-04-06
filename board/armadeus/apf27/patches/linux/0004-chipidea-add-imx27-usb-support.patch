@@ -1,0 +1,154 @@
+From bfa323c1b1d1850270533e79bcd436b8cce8bb5e Mon Sep 17 00:00:00 2001
+From: Eric Jarrige <eric.jarrige@armadeus.org>
+Date: Fri, 7 Apr 2017 12:15:04 +0200
+Subject: [PATCH 4/5] chipidea: add imx27 usb support
+
+Add i.MX27 and i.MX31 to the usbmisc driver. (based on Alexexander Shiyan patches)
+
+TODO: add control to external USB VBUS power supply
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Julien Corjon <corjon.j@ecagroup.com>
+---
+ arch/arm/boot/dts/imx27.dtsi       |  3 +++
+ drivers/usb/chipidea/ci_hdrc_imx.c |  9 ++++++++
+ drivers/usb/chipidea/ci_hdrc_imx.h |  3 +++
+ drivers/usb/chipidea/usbmisc_imx.c | 44 ++++++++++++++++++++++++++++++++------
+ 4 files changed, 52 insertions(+), 7 deletions(-)
+
+diff --git a/arch/arm/boot/dts/imx27.dtsi b/arch/arm/boot/dts/imx27.dtsi
+index b397384..5b38306 100644
+--- a/arch/arm/boot/dts/imx27.dtsi
++++ b/arch/arm/boot/dts/imx27.dtsi
+@@ -47,6 +47,9 @@
+ 		spi0 = &cspi1;
+ 		spi1 = &cspi2;
+ 		spi2 = &cspi3;
++		usb0 = &usbotg;
++		usb1 = &usbh1;
++		usb2 = &usbh2;
+ 	};
+ 
+ 	aitc: aitc-interrupt-controller@e0000000 {
+diff --git a/drivers/usb/chipidea/ci_hdrc_imx.c b/drivers/usb/chipidea/ci_hdrc_imx.c
+index d8b2d85..c0d1c08 100644
+--- a/drivers/usb/chipidea/ci_hdrc_imx.c
++++ b/drivers/usb/chipidea/ci_hdrc_imx.c
+@@ -107,6 +107,7 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
+ 	struct device_node *np = dev->of_node;
+ 	struct of_phandle_args args;
+ 	struct imx_usbmisc_data *data;
++	u32 sic;
+ 	int ret;
+ 
+ 	/*
+@@ -153,6 +154,14 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
+ 	if (!of_find_property(np, "ext-clk-en", NULL))
+ 		data->ext_clk_en = 1;
+ 
++	if (of_find_property(np, "disable-tll", NULL))
++		data->disable_tll = 1;
++
++	if (!of_property_read_u32(np, "sic", &sic)) {
++		data->enable_sic = 1;
++		data->sic = sic & 0x3;
++	}
++
+ 	return data;
+ }
+ 
+diff --git a/drivers/usb/chipidea/ci_hdrc_imx.h b/drivers/usb/chipidea/ci_hdrc_imx.h
+index fa8fdad..589e35c 100644
+--- a/drivers/usb/chipidea/ci_hdrc_imx.h
++++ b/drivers/usb/chipidea/ci_hdrc_imx.h
+@@ -20,6 +20,9 @@ struct imx_usbmisc_data {
+ 	unsigned int oc_polarity:1; /* over current polarity if oc enabled */
+ 	unsigned int evdo:1; /* set external vbus divider option */
+ 	unsigned int ext_clk_en:1; /* select the clock from external PHY*/
++	unsigned int disable_tll:1; /* disable transceiver-less link logic */
++	unsigned int enable_sic:1; /* enable serial interface configuration */
++	unsigned int sic:2; /* serial interface configuration */
+ 	unsigned int ulpi:1; /* connected to an ULPI phy */
+ };
+ 
+diff --git a/drivers/usb/chipidea/usbmisc_imx.c b/drivers/usb/chipidea/usbmisc_imx.c
+index e77a4ed..b041649 100644
+--- a/drivers/usb/chipidea/usbmisc_imx.c
++++ b/drivers/usb/chipidea/usbmisc_imx.c
+@@ -41,8 +41,18 @@
+ #define MX25_H1_OCPOL_BIT		BIT(2)
+ 
+ #define MX27_H1_PM_BIT			BIT(8)
++#define MX27_H1_SIC_OFFSET     13
++#define MX27_H1_SIC_MASK       0x00006000
++#define MX27_H1_TLL_BIT            BIT(4)
+ #define MX27_H2_PM_BIT			BIT(16)
++#define USBCTRL_UIE_BIT			BIT(26)
++#define USBCTRL_WIE_BIT			BIT(27)
++#define MX27_H2_SIC_OFFSET     21
++#define MX27_H2_SIC_MASK       0x00600000
++#define MX27_H2_TLL_BIT            BIT(5)
+ #define MX27_OTG_PM_BIT			BIT(24)
++#define MX27_OTG_SIC_OFFSET        29
++#define MX27_OTG_SIC_MASK      0x60000000
+ 
+ #define MX53_USB_OTG_PHY_CTRL_0_OFFSET	0x08
+ #define MX53_USB_OTG_PHY_CTRL_1_OFFSET	0x0c
+@@ -168,27 +178,47 @@ static int usbmisc_imx27_init(struct imx_usbmisc_data *data)
+ {
+ 	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
+ 	unsigned long flags;
+-	u32 val;
++	u32 val = 0;
++	u32 mask;
++	u32 reg;
+ 
+ 	switch (data->index) {
+ 	case 0:
+ 		val = MX27_OTG_PM_BIT;
+ 		break;
+ 	case 1:
+-		val = MX27_H1_PM_BIT;
++		mask = MX27_H1_PM_BIT;
++		if (data->disable_oc)
++			val |= MX27_H1_PM_BIT;
++
++		if (data->enable_sic) {
++			mask |= MX27_H1_SIC_MASK;
++			val |= data->sic << MX27_H1_SIC_OFFSET;
++		}
++
++		if (data->disable_tll)
++			val |= MX27_H1_TLL_BIT;
+ 		break;
+ 	case 2:
+-		val = MX27_H2_PM_BIT;
++		mask = MX27_H2_PM_BIT;
++		if (data->disable_oc)
++			val |= MX27_H2_PM_BIT;
++
++		if (data->enable_sic) {
++			mask |= MX27_H2_SIC_MASK;
++			val |= data->sic << MX27_H2_SIC_OFFSET;
++		}
++
++		if (data->disable_tll)
++			val |= MX27_H2_TLL_BIT;
+ 		break;
+ 	default:
+ 		return -EINVAL;
+ 	}
+ 
+ 	spin_lock_irqsave(&usbmisc->lock, flags);
+-	if (data->disable_oc)
+-		val = readl(usbmisc->base) | val;
+-	else
+-		val = readl(usbmisc->base) & ~val;
++	reg = readl(usbmisc->base);
++	reg = (reg  & ~mask) | val;
+ 	writel(val, usbmisc->base);
+ 	spin_unlock_irqrestore(&usbmisc->lock, flags);
+ 
+-- 
+2.9.3
+
