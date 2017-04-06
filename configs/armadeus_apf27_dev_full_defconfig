@@ -1,0 +1,14 @@
+# architecture
+BR2_arm=y
+BR2_arm926t=y
+
+# patches
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_ARMADEUS_PATH)/board/armadeus/apf27/patches"
+
+# system
+BR2_TARGET_GENERIC_GETTY_PORT="ttymxc0"
+
+# filesystem
+BR2_TARGET_ROOTFS_UBIFS=y
+BR2_TARGET_ROOTFS_UBIFS_MAXLEBCNT=2047
+BR2_TARGET_ROOTFS_UBI=y
