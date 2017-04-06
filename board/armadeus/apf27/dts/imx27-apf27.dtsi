@@ -1,0 +1,594 @@
+/*
+ * Copyright 2013 Armadeus Systems - <support@armadeus.com>
+ * Copyright 2016 Julien Corjon <corjon.j@ecagroup.com>
+ *
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
+ *
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
+ */
+#include "imx27.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	model = "Armadeus APF27 SoM";
+	compatible = "armadeus,imx27-apf27", "fsl,imx27";
+
+	chosen {
+                bootargs = "console=ttymxc0,115200 ubi.mtd=rootfs root=ubi0:rootfs rootfstype=ubifs";
+		stdout-path = &uart1;
+        };
+
+	clocks {
+		osc26m {
+			clock-frequency = <0>;	/* Override osc26m as we are not sure to have an external 26mHz clock */
+		};
+	};
+
+	memory {
+		reg = <0xa0000000 0x04000000>; /* 64MB - replace with 0x08000000 for 128MB */
+	};
+
+	regulators {
+		compatible = "simple-bus";
+
+		reg_5v0: regulator@1 {
+			compatible = "regulator-fixed";
+			reg = <1>;
+			regulator-name = "5V0";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+		};
+
+		reg_fec_pwr: fec_pwr {
+			compatible = "regulator-fixed";
+			reg = <0>;
+			regulator-name = "fec_pwr";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+		reg_fpga_pwr: fpga_pwr {
+			compatible = "regulator-fixed";
+			pinctrl-names = "default";
+			pinctrl-0 = <&pinctrl_fpga_pwr>;
+			regulator-name = "fpga_pwr";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			gpio = <&gpio6 19 GPIO_ACTIVE_HIGH>;
+			regulator-always-on;
+		};
+
+		reg_usb_pwr: usb_pwr {
+			compatible = "regulator-fixed";
+			pinctrl-names = "default";
+			pinctrl-0 = <&pinctrl_usb_pwr>;
+			regulator-name = "usb_pwr";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			gpio = <&gpio2 23 GPIO_ACTIVE_HIGH>;
+			regulator-always-on;
+		};
+        };
+
+	usbphy {
+		compatible = "simple-bus";
+
+		/* Due to the lack of device-tree support for ISP1504 (phy-ulpi)
+		 * We set up an usb-nop-xceiv to let the imx driver go on */
+		usbphyotg: usbphy@0 {
+			compatible = "usb-nop-xceiv";
+			reg = <0>;
+			vcc-supply = <&reg_5v0>;
+			clocks = <&clks IMX27_CLK_DUMMY>;
+			clock-names = "main_clk";
+		};
+	};
+};
+
+//&csi {
+//	pinctrl-names = "default";
+//	pinctrl-0 = <&pinctrl_csi>;
+//	status = "disabled";
+//};
+
+&cspi1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_cspi1 &pinctrl_cspi1_cs>;
+	fsl,spi-num-chipselects = <2>;
+	cs-gpios = <&gpio4 28 GPIO_ACTIVE_HIGH>,			/* SPI1_SS0 - J1 Pin 11 */
+		   <&gpio4 26 GPIO_ACTIVE_HIGH>;			/* SPI1_SS2 - J1 Pin 12 */
+	status = "disabled";
+};
+
+&cspi2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_cspi2 &pinctrl_cspi2_cs>;
+	fsl,spi-num-chipselects = <3>;
+	cs-gpios = <&gpio4 21 GPIO_ACTIVE_HIGH>,			/* SPI2_SS0 - J1 Pin 8 */
+		   <&gpio4 20 GPIO_ACTIVE_HIGH>,			/* SPI2_SS1 - J1 Pin 9 */
+		   <&gpio4 19 GPIO_ACTIVE_HIGH>;			/* SPI2_SS2 - J1 Pin 10 */
+	status = "disabled";
+};
+
+&fb {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_imxfb>;
+	display = <&display>;
+	status = "disabled";
+};
+
+&fec {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_fec>;
+	phy-mode= "mii";
+	phy-supply = <&reg_fec_pwr>;
+	status = "okay";
+};
+
+&i2c1{
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1>;
+	status = "disabled";
+};
+
+&i2c2{
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
+	clock-frequency = <400000>;
+	status = "okay";
+
+	eeprom@50 {
+		compatible = "atmel,24c02";
+		reg = <0x50>;
+		pagesize = <8>;
+	};
+};
+
+&iomuxc {
+	imx27-apf27 {
+		pinctrl_csi: csigrp {
+			fsl,pins = <
+				MX27_PAD_CSI_D6__CSI_D6			0x0 /* CSI_D6_UART5_TXD_2V5 - J1 Pin 38 */
+				MX27_PAD_CSI_D7__CSI_D7			0x0 /* CSI_D7_UART5_RXD_2V5 - J1 Pin 39 */
+				MX27_PAD_CSI_VSYNC__CSI_VSYNC		0x0 /* CSI_VSYNC_UART5_CTS_2V5 - J1 Pin 40 */
+				MX27_PAD_CSI_HSYNC__CSI_HSYNC		0x0 /* CSI_HSYNC_UART5_RTS_2V5 - J1 Pin 41 */
+				MX27_PAD_CSI_MCLK__CSI_MCLK		0x0 /* CSI_MCLK_2V5 - J1 Pin 42 */
+				MX27_PAD_CSI_PIXCLK__CSI_PIXCLK		0x0 /* CSI_PIXCLK_2V5 - J1 Pin 43 */
+				MX27_PAD_CSI_D5__CSI_D5			0x0 /* CSI_D2_UART6_CTS_2V5 - J1 Pin 83 */
+				MX27_PAD_CSI_D4__CSI_D4			0x0 /* CSI_D5_2V5 - J1 Pin 80 */
+				MX27_PAD_CSI_D3__CSI_D3			0x0 /* CSI_D3_UART6_RTS_2V5 - J1 Pin 82 */
+				MX27_PAD_CSI_D2__CSI_D2			0x0 /* CSI_D1_UART6_RXD_2V5 - J1 Pin 84 */
+				MX27_PAD_CSI_D1__CSI_D1			0x0 /* CSI_D0_UART6_TXD_2V5 - J1 Pin 85 */
+				MX27_PAD_CSI_D0__CSI_D0			0x0 /* CSI_D4_2V5 - J1 Pin 81 */
+			>;
+		};
+
+		pinctrl_cspi1: cspi1grp {
+			fsl,pins = <
+				MX27_PAD_CSPI1_SCLK__CSPI1_SCLK		0x0 /* SPI1_SCLK - Pin 109 */
+				MX27_PAD_CSPI1_MISO__CSPI1_MISO		0x0 /* SPI1_MISO - Pin 110 */
+				MX27_PAD_CSPI1_MOSI__CSPI1_MOSI		0x0 /* SPI1_MOSI - Pin 111 */
+			>;
+		};
+
+		pinctrl_cspi1_cs: cspi1csgrp {
+			fsl,pins = <
+				MX27_PAD_CSPI1_SS0__GPIO4_28		0x0 /* SPI1_SS0 - J1 Pin 11 */
+				MX27_PAD_CSPI1_SS2__GPIO4_26		0x0 /* SPI1_SS2 - J1 Pin 12 */
+			>;
+		};
+
+		pinctrl_cspi2: cspi2grp {
+			fsl,pins = <
+				MX27_PAD_CSPI2_MOSI__CSPI2_MOSI		0x0 /* SPI2_MOSI - J1 Pin 112 */
+				MX27_PAD_CSPI2_MISO__CSPI2_MISO		0x0 /* SPI2_MISO - J1 Pin 113 */
+				MX27_PAD_CSPI2_SCLK__CSPI2_SCLK		0x0 /* SPI2_SCLK - J1 Pin 114 */
+			>;
+		};
+
+		pinctrl_cspi2_cs: cspi2csgrp {
+			fsl,pins = <
+				MX27_PAD_CSPI2_SS0__GPIO4_21		0x0 /* SPI2_SS0 - J1 Pin 8 */
+				MX27_PAD_CSPI2_SS1__GPIO4_20		0x0 /* SPI2_SS1 - J1 Pin 9 */
+				MX27_PAD_CSPI2_SS2__GPIO4_19		0x0 /* SPI2_SS2 - J1 Pin 10 */
+			>;
+		};
+
+		pinctrl_fec: fecgrp {
+			fsl,pins = <
+				MX27_PAD_SD3_CMD__FEC_TXD0 		0x0
+				MX27_PAD_SD3_CLK__FEC_TXD1 		0x0
+				MX27_PAD_ATA_DATA0__FEC_TXD2 		0x0
+				MX27_PAD_ATA_DATA1__FEC_TXD3 		0x0
+				MX27_PAD_ATA_DATA2__FEC_RX_ER 		0x0
+				MX27_PAD_ATA_DATA3__FEC_RXD1 		0x0
+				MX27_PAD_ATA_DATA4__FEC_RXD2 		0x0
+				MX27_PAD_ATA_DATA5__FEC_RXD3 		0x0
+				MX27_PAD_ATA_DATA6__FEC_MDIO 		0x0
+				MX27_PAD_ATA_DATA7__FEC_MDC 		0x0
+				MX27_PAD_ATA_DATA8__FEC_CRS 		0x0
+				MX27_PAD_ATA_DATA9__FEC_TX_CLK 		0x0
+				MX27_PAD_ATA_DATA10__FEC_RXD0 		0x0
+				MX27_PAD_ATA_DATA11__FEC_RX_DV 		0x0
+				MX27_PAD_ATA_DATA12__FEC_RX_CLK 	0x0
+				MX27_PAD_ATA_DATA13__FEC_COL 		0x0
+				MX27_PAD_ATA_DATA14__FEC_TX_ER 		0x0
+				MX27_PAD_ATA_DATA15__FEC_TX_EN 		0x0
+			>;
+		};
+
+		pinctrl_fpga: fpgagrp {
+			fsl,pins = <
+				MX27_PAD_PC_BVD2__GPIO6_11		0x0 /* FPGA_PRG */
+				MX27_PAD_CLKO__CLKO			0x0 /* CLK0 */
+				MX27_PAD_PC_BVD1__GPIO6_12		0x0 /* FPGA_INIT_B */
+				MX27_PAD_IOIS16__GPIO6_9		0x0 /* FPGA_DONE */
+				MX27_PAD_PC_RST__GPIO6_10		0x0 /* FPGA_SUSPEND */
+				MX27_PAD_PC_POE__GPIO6_7		0x0 /* FPGA_RESET */
+				MX27_PAD_CSPI1_RDY__GPIO4_25		0x0 /* DMA_REQ_B */
+				MX27_PAD_CSPI1_SS1__GPIO4_27		0x0 /* DMA_GRANT_B */
+			>;
+		};
+
+		pinctrl_fpga_pwr: fpgapwrgrp {
+			fsl,pins = <
+				MX27_PAD_PC_CD2_B__GPIO6_19		0x0 /* FPGA_SUPPLY_OFF */
+			>;
+		};
+
+		pinctrl_imxfb: imxfbgrp {
+			fsl,pins = <
+				MX27_PAD_LD0__LD0			0x0 /* B0 - J1 Pin 66 */
+				MX27_PAD_LD1__LD1			0x0 /* B1 - J1 Pin 65 */
+				MX27_PAD_LD2__LD2			0x0 /* B2 - J1 Pin 64 */
+				MX27_PAD_LD3__LD3			0x0 /* B3 - J1 Pin 63 */
+				MX27_PAD_LD4__LD4			0x0 /* B4 - J1 Pin 62 */
+				MX27_PAD_LD5__LD5			0x0 /* B5 - J1 Pin 61 */
+				MX27_PAD_LD6__LD6			0x0 /* G0 - J1 Pin 72 */
+				MX27_PAD_LD7__LD7			0x0 /* G1 - J1 Pin 71 */
+				MX27_PAD_LD8__LD8			0x0 /* G2 - J1 Pin 70 */
+				MX27_PAD_LD9__LD9			0x0 /* G3 - J1 Pin 69 */
+				MX27_PAD_LD10__LD10			0x0 /* G4 - J1 Pin 68 */
+				MX27_PAD_LD11__LD11			0x0 /* G5 - J1 Pin 67 */
+				MX27_PAD_LD12__LD12			0x0 /* R0 - J1 Pin 78 */
+				MX27_PAD_LD13__LD13			0x0 /* R1 - J1 Pin 77 */
+				MX27_PAD_LD14__LD14			0x0 /* R2 - J1 Pin 76 */
+				MX27_PAD_LD15__LD15			0x0 /* R3 - J1 Pin 75 */
+				MX27_PAD_LD16__LD16			0x0 /* R4 - J1 Pin 74 */
+				MX27_PAD_LD17__LD17			0x0 /* R5 - J1 Pin 73 */
+				MX27_PAD_LSCLK__LSCLK			0x0 /* LCD_CLK_IN - J1 Pin 59 */
+				MX27_PAD_OE_ACD__OE_ACD			0x0 /* OE_ACD - J1 Pin 58 */
+				MX27_PAD_HSYNC__HSYNC			0x0 /* LCD_HSYNC - J1 Pin 55 */
+				MX27_PAD_VSYNC__VSYNC			0x0 /* LCD_VSYNC - J1 Pin 56 */
+				MX27_PAD_CONTRAST__CONTRAST		0x0
+				MX27_PAD_PS__PS				0x0
+				MX27_PAD_SPL_SPR__SPL_SPR		0x0
+				MX27_PAD_REV__REV			0x0
+				MX27_PAD_CLS__CLS 			0x0
+			>;
+		};
+
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <
+				MX27_PAD_I2C_DATA__I2C_DATA		0x0 /* I2C1_SDA - J1 Pin 104 */
+				MX27_PAD_I2C_CLK__I2C_CLK		0x0 /* I2C1_SCK - J1 Pin 105 */
+			>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <
+				MX27_PAD_I2C2_SDA__I2C2_SDA		0x0 /* I2C2_SDA - J1 Pin 107 */
+				MX27_PAD_I2C2_SCL__I2C2_SCL		0x0 /* I2C2_SCK - J1 Pin 108 */
+			>;
+		};
+
+		pinctrl_nand: nandgrp {
+			fsl,pins = <
+				MX27_PAD_NFRB__NFRB			0x0
+				MX27_PAD_NFCLE__NFCLE			0x0
+				MX27_PAD_NFWP_B__NFWP_B			0x0
+				MX27_PAD_NFCE_B__NFCE_B			0x0
+				MX27_PAD_NFALE__NFALE			0x0
+				MX27_PAD_NFRE_B__NFRE_B			0x0
+				MX27_PAD_NFWE_B__NFWE_B			0x0
+			>;
+		};
+
+		pinctrl_owire: owiregrp {
+			fsl,pins = <
+				MX27_PAD_RTCK__OWIRE			0x0 /* RTCK_OWIRE_2V8 - J1 Pin 106 */
+			>;
+		};
+
+		pinctrl_pwm: pwmgrp {
+			fsl,pins = <
+				MX27_PAD_PWMO__PWMO 			0x0
+			>;
+		};
+
+		pinctrl_sdhc1: sdhc1grp {
+			fsl,pins = <
+				MX27_PAD_SD1_CLK__SD1_CLK		0x0 /* SD1_CLK - J1 Pin 21 */
+				MX27_PAD_SD1_CMD__SD1_CMD		0x0 /* SD1_CMD - J1 Pin 20 */
+				MX27_PAD_SD1_D0__SD1_D0			0x0 /* SD1_D0 - J1 Pin 16 */
+				MX27_PAD_SD1_D1__SD1_D1			0x0 /* SD1_D1 - J1 Pin 17 */
+				MX27_PAD_SD1_D2__SD1_D2			0x0 /* SD1_D2 - J1 Pin 18 */
+				MX27_PAD_SD1_D3__SD1_D3			0x0 /* SD1_D3 - J1 Pin 19 */
+			>;
+		};
+
+		pinctrl_sdhc2: sdhc2grp {
+			fsl,pins = <
+				MX27_PAD_SD2_CLK__SD2_CLK		0x0 /* SD2_CLK_2V5 - J1 Pin 49 */
+				MX27_PAD_SD2_CMD__SD2_CMD		0x0 /* SD2_CMD_2V5 - J1 Pin 48 */
+				MX27_PAD_SD2_D0__SD2_D0			0x0 /* SD2_D0_2V5 - J1 Pin 44 */
+				MX27_PAD_SD2_D1__SD2_D1			0x0 /* SD2_D1_2V5 - J1 Pin 45 */
+				MX27_PAD_SD2_D2__SD2_D2			0x0 /* SD2_D2_2V5 - J1 Pin 46 */
+				MX27_PAD_SD2_D3__SD2_D3			0x0 /* SD2_D3_2V5 - J1 Pin 47 */
+			>;
+		};
+
+		pinctrl_ssi1: ssi1grp {
+			fsl,pins = <
+				MX27_PAD_SSI1_FS__SSI1_FS		0x0
+				MX27_PAD_SSI1_RXDAT__SSI1_RXDAT		0x0
+				MX27_PAD_SSI1_TXDAT__SSI1_TXDAT		0x0
+				MX27_PAD_SSI1_CLK__SSI1_CLK		0x0
+			>;
+		};
+
+		pinctrl_ssi2: ssi2grp {
+			fsl,pins = <
+				MX27_PAD_SSI2_FS__SSI2_FS		0x0
+				MX27_PAD_SSI2_RXDAT__SSI2_RXDAT		0x0
+				MX27_PAD_SSI2_TXDAT__SSI2_TXDAT		0x0
+				MX27_PAD_SSI2_CLK__SSI2_CLK		0x0
+			>;
+		};
+
+		pinctrl_ssi3: ssi3grp {
+			fsl,pins = <
+				MX27_PAD_SSI3_FS__SSI3_FS		0x0
+				MX27_PAD_SSI3_RXDAT__SSI3_RXDAT		0x0
+				MX27_PAD_SSI3_TXDAT__SSI3_TXDAT		0x0
+				MX27_PAD_SSI3_CLK__SSI3_CLK		0x0
+			>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <
+				MX27_PAD_UART1_TXD__UART1_TXD 		0x0
+				MX27_PAD_UART1_RXD__UART1_RXD 		0x0
+			>;
+		};
+
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <
+				MX27_PAD_UART2_TXD__UART2_TXD 		0x0
+				MX27_PAD_UART2_RXD__UART2_RXD 		0x0
+				MX27_PAD_UART2_CTS__UART2_CTS		0x0
+				MX27_PAD_UART2_RTS__UART2_RTS		0x0
+			>;
+		};
+
+		pinctrl_uart3: uart3grp {
+			fsl,pins = <
+				MX27_PAD_UART3_TXD__UART3_TXD		0x0 /* RS232_TX3 - J2 Pin 105 */
+				MX27_PAD_UART3_RXD__UART3_RXD		0x0 /* RS232_RX3 - J2 Pin 104 */
+				MX27_PAD_UART3_CTS__UART3_CTS		0x0 /* RS232_CTS_3 - J1 Pin 24 */
+				MX27_PAD_UART3_RTS__UART3_RTS		0x0 /* RS232_RTS_3 - J1 Pin 25 */
+			>;
+		};
+
+		pinctrl_usbh1: usbh1grp {
+			fsl,pins = <
+				MX27_PAD_USBH1_OE_B__USBH1_OE_B		0x0 /* USB1_OEN - J1 Pin 118 */
+				MX27_PAD_USBH1_RCV__USBH1_RCV		0x0 /* USB1_RCV - J1 Pin 119 */
+				MX27_PAD_USBH1_SUSP__USBH1_SUSP		0x0 /* USB1_SUSPEND - J1 Pin 3 */
+				MX27_PAD_USBH1_TXDP__USBH1_TXDP		0x0 /* USB1_TXDP - J1 Pin 117 */
+				MX27_PAD_USBH1_RXDP__USBH1_RXDP		0x0 /* USB1_RXDP - J1 Pin 116 */
+				MX27_PAD_USBH1_TXDM__USBH1_TXDM		0x0 /* USB1_TXDN - J1 Pin 6 */
+				MX27_PAD_USBH1_RXDM__USBH1_RXDM		0x0 /* USB1_RXDN - J1 Pin 7 */
+				MX27_PAD_USBH1_FS__USBH1_FS		0x0 /* USB1_FS - J1 Pin 5 */
+			>;
+		};
+
+		pinctrl_usb_pwr: usb-pwr {
+			fsl,pins = <
+				MX27_PAD_USB_PWR__USB_PWR		0x0 /* USB1_PWR - J1 Pin 4 */
+			>;
+		};
+
+		pinctrl_usbh2: usbh2grp {
+			fsl,pins = <
+				MX27_PAD_USBH2_CLK__USBH2_CLK		0x0
+				MX27_PAD_USBH2_DIR__USBH2_DIR		0x0
+				MX27_PAD_USBH2_DATA7__USBH2_DATA7	0x0
+				MX27_PAD_USBH2_NXT__USBH2_NXT		0x0
+				MX27_PAD_USBH2_STP__USBH2_STP		0x0
+			>;
+		};
+
+		pinctrl_usbotg: usbotggrp {
+			fsl,pins = <
+				MX27_PAD_USBOTG_CLK__USBOTG_CLK		0x0
+				MX27_PAD_USBOTG_DIR__USBOTG_DIR		0x0
+				MX27_PAD_USBOTG_NXT__USBOTG_NXT		0x0
+				MX27_PAD_USBOTG_STP__USBOTG_STP		0x0
+				MX27_PAD_USBOTG_DATA0__USBOTG_DATA0	0x0
+				MX27_PAD_USBOTG_DATA1__USBOTG_DATA1	0x0
+				MX27_PAD_USBOTG_DATA2__USBOTG_DATA2	0x0
+				MX27_PAD_USBOTG_DATA3__USBOTG_DATA3	0x0
+				MX27_PAD_USBOTG_DATA4__USBOTG_DATA4	0x0
+				MX27_PAD_USBOTG_DATA5__USBOTG_DATA5	0x0
+				MX27_PAD_USBOTG_DATA6__USBOTG_DATA6	0x0
+				MX27_PAD_USBOTG_DATA7__USBOTG_DATA7	0x0
+			>;
+		};
+
+		pinctrl_weim: weimgrp {
+			fsl,pins = <
+				MX27_PAD_PC_WAIT_B__ATA_CS1		0x0
+				MX27_PAD_CS4_B__CS4_B			0x0
+				MX27_PAD_CS5_B__CS5_B			0x0
+//				EB0					0x0
+//				EB1					0x0
+//				OE					0x0
+			>;
+		};
+	};
+};
+
+&kpp {
+	status = "disabled";
+};
+
+&nfc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_nand>;
+	nand-ecc-mode = "hw";
+	nand-on-flash-bbt;
+	nand-bus-width = <16>;
+	status = "okay";
+
+	partition@0 {
+		label = "u-boot";
+		reg = <0x0 0x100000>;
+	};
+
+	partition@100000 {
+		label = "env";
+		reg = <0x100000 0x80000>;
+	};
+
+	partition@180000 {
+		label = "env2";
+		reg = <0x180000 0x80000>;
+	};
+
+	partition@200000 {
+		label = "firmware";
+		reg = <0x200000 0x80000>;
+	};
+
+	partition@280000 {
+		label = "dtb";
+		reg = <0x280000 0x80000>;
+	};
+
+	partition@300000 {
+		label = "kernel";
+		reg = <0x300000 0x500000>;
+	};
+
+	partition@800000 {
+		label = "rootfs";
+		reg = <0x800000 0xf800000>;
+	};
+};
+
+&owire{
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_owire>;
+	status = "disabled";
+};
+
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm>;
+	status = "disabled";
+};
+
+&sdhci1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sdhc1>;
+	bus-width = <4>;
+	status = "disabled";
+};
+
+&sdhci2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sdhc2>;
+	bus-width = <4>;
+	status = "disabled";
+};
+
+&ssi1{
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ssi1>;
+	status = "disabled";
+};
+
+&ssi2{
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ssi2>;
+	status = "disabled";
+};
+
+//&ssi3{
+//	pinctrl-names = "default";
+//	pinctrl-0 = <&pinctrl_ssi3>;
+//	status = "disabled";
+//};
+
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+	status = "okay";
+};
+
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2>;
+	status = "disabled";
+};
+
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+	status = "disabled";
+};
+
+&usbh1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbh1>;
+	vbus-supply = <&reg_usb_pwr>;
+	status = "disabled";
+};
+
+&usbh2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbh2>;
+	status = "disabled";
+};
+
+&usbotg {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg>;
+	dr_mode = "otg";
+	phy_type = "ulpi";
+	vbus-supply = <&reg_5v0>;
+	fsl,usbphy = <&usbphyotg>;
+	disable-over-current;
+	status = "disabled";
+};
+
+&weim {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_weim>;
+	status = "okay";
+
+	fpga: fpga@5,0 {
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_fpga>;
+		compatible = "xilinx,spartan3";
+		reg = <5 0x00000000 0x00002000>;
+		interrupt-parent = <&gpio6>;
+		interrupts = <12 IRQ_TYPE_EDGE_FALLING>;
+		fsl,weim-cs-timing = <0x00000600 0x00000D01 0x00000000>;
+		vmmc-supply = <&reg_fpga_pwr>;
+	};
+};

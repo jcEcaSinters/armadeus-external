@@ -1,0 +1,49 @@
+#
+# Armadeus APF27_dev_full environment
+#
+# Note : There is no bootargs as they already are in the device-tree
+#
+
+env_version=11
+board_name=apf27_dev_full
+consoledev=ttymxc0
+partition=nand0,6
+kernel_addr_r=A0000000
+fdt_addr_r=0xA1000000
+firmware_autoload=0
+bootargs=
+
+check_flash=nand lock; nand unlock env;
+
+download_uboot=tftpboot ${loadaddr} u-boot-with-nohab-spl.bin
+flash_uboot=nand unlock u-boot ; nand erase.part u-boot; if nand write.trimffs ${fileaddr} u-boot ${filesize}; then nand lock; nand unlock u-boot; echo Flashing of uboot succeed; else echo Flashing of uboot failed; fi;
+update_uboot=run download_uboot flash_uboot
+
+download_env=tftpboot ${loadaddr} uboot-env.bin
+flash_env=env import -t ${loadaddr} && env save;
+update_env=run download_env flash_env
+check_env=if test -n ${flash_env_version}; then env default env_version; else env set flash_env_version ${env_version}; env save; fi; if itest ${flash_env_version} < ${env_version}; then echo \"*** Warning - Environment version change suggests: run flash_reset_env; reset\"; env default flash_reset_env; else exit; fi;
+flash_reset_env=env default -f -a && saveenv && echo Flash environment variables erased!
+
+download_firmware=tftpboot ${loadaddr} ${board_name}-firmware.bin\0
+flash_firmware=nand erase.part firmware; if nand write.trimffs ${fileaddr} firmware ${filesize}; then echo Flashing of Firmware succeed; else echo Flashing of Firmware failed; fi
+update_firmware=run download_firmware flash_firmware
+checknload_firmware=if test ${firmware_autoload} -eq 1; then run load_firmware; else exit; fi;
+load_firmware=nand read ${loadaddr} firmware && fpga loadb 0 ${loadaddr} ${firmware_size} || fpga load 0 ${loadaddr} ${firmware_size}; if test $? -eq 0; then echo Firmware successfully loaded; else echo Loading firmware failed!; fi;
+
+download_dtb=tftpboot ${loadaddr} imx27-apf27_dev_full.dtb
+flash_dtb=nand erase.part dtb; if nand write.trimffs ${fileaddr} dtb ${filesize}; then echo Flashing dtb succeed; else echo Flashing dtb failed; fi
+update_dtb=run download_dtb flash_dtb
+
+download_kernel=tftpboot ${loadaddr} uImage
+flash_kernel=nand erase.part kernel; if nand write.trimffs ${fileaddr} kernel ${filesize}; then echo Flashing of kernel succeed; else echo Flashing of kernel failed; fi
+update_kernel=run download_kernel flash_kernel
+
+download_rootfs=tftpboot ${loadaddr} rootfs.ubi
+flash_rootfs=nand erase.part rootfs; if nand write.trimffs ${fileaddr} rootfs ${filesize}; then echo Flashing of rootfs succeed; else echo Flashing of rootfs failed;fi
+update_rootfs=run download_rootfs flash_rootfs
+
+update_all=run update_kernel update_rootfs update_uboot && if test -n ${fdt_addr_r}; then run update_dtb; else exit; fi && if test ${firmware_autoload} -eq 1; then run update_firmware; else exit; fi;
+
+bootcmd=if test -n ${fdt_addr_r};then nand read ${fdt_addr_r} dtb;else echo no fdt_addr_r;fi &&nboot ${kernel_addr_r} kernel;bootm ${kernel_addr_r} - ${fdt_addr_r}
+preboot=run check_flash check_env;

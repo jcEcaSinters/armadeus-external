@@ -1,0 +1,27 @@
+From 08dc5e139b4899c650831b21a3fec080951eb9fb Mon Sep 17 00:00:00 2001
+From: Eric Jarrige <eric.jarrige@armadeus.org>
+Date: Mon, 23 May 2016 12:07:02 +0200
+Subject: [PATCH 1/9] Restore command env param compatibility with legacy
+ U-Boot versions
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+ cmd/nvedit.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/cmd/nvedit.c b/cmd/nvedit.c
+index 9ca5cb5..4fcee84 100644
+--- a/cmd/nvedit.c
++++ b/cmd/nvedit.c
+@@ -767,7 +767,7 @@ static int do_env_default(cmd_tbl_t *cmdtp, int __flag,
+ 		}
+ 	}
+ 	debug("Final value for argc=%d\n", argc);
+-	if (all && (argc == 0)) {
++	if ((all || (flag & H_FORCE)) && (argc == 0)) {
+ 		/* Reset the whole environment */
+ 		set_default_env("## Resetting to default environment\n");
+ 		return 0;
+-- 
+2.9.3
+

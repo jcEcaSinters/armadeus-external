@@ -18,6 +18,7 @@ The goal is to finalize tunning before buildroot mainline submission.
 
 This external repository have been tested with:
 - buildroot-2017.02.1
+- uboot-2017.03
 
 ## Install
 ```
@@ -28,6 +29,9 @@ cd buildroot-armadeus
 make 0=${PWD} -C ../buildroot BR2_EXTERNAL=../armadeus-external armadeus_apf27_dev_full_defconfig
 make
 ```
+## Known issues / ToDoList
+- Uboot patches have to be mainlined
+
 ## License
 
 [GPLv2](LICENSE). Copyright (c) [ECA SINTERS](http://www.ecagroup.com).

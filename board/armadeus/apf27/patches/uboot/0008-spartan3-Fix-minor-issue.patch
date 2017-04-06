@@ -1,0 +1,85 @@
+From 0dabf8d0e83db92869fd5afdb4172abfd6bb077d Mon Sep 17 00:00:00 2001
+From: Eric Jarrige <eric.jarrige@armadeus.org>
+Date: Mon, 23 May 2016 12:57:41 +0200
+Subject: [PATCH 8/9] spartan3: Fix minor issue.
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+---
+ drivers/fpga/spartan3.c | 24 +++++++++++++++++++++---
+ include/fpga.h          |  2 +-
+ 2 files changed, 22 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/fpga/spartan3.c b/drivers/fpga/spartan3.c
+index b0213e6..e56d99c 100644
+--- a/drivers/fpga/spartan3.c
++++ b/drivers/fpga/spartan3.c
+@@ -11,6 +11,7 @@
+  */
+ 
+ #include <common.h>		/* core U-Boot definitions */
++#include <console.h>
+ #include <spartan3.h>		/* Spartan-II device family */
+ 
+ /* Define FPGA_DEBUG to get debug printf's */
+@@ -172,8 +173,14 @@ static int spartan3_sp_load(xilinx_desc *desc, const void *buf, size_t bsize)
+ 		(*fn->clk) (true, true, cookie);	/* Assert the clock pin */
+ 
+ 		/* Load the data */
+-		while (bytecount < bsize) {
+-			/* XXX - do we check for an Ctrl-C press in here ??? */
++		while ( ((*fn->done) (cookie) != FPGA_SUCCESS)
++			&& (bytecount < bsize)) {
++#ifdef CONFIG_SYS_FPGA_CHECK_CTRLC
++			if (ctrlc ()) {
++				(*fn->abort) (cookie);
++				return FPGA_FAIL;
++			}
++#endif
+ 			/* XXX - Check the error bit? */
+ 
+ 			(*fn->wdata) (data[bytecount++], true, cookie); /* write the data */
+@@ -272,7 +279,12 @@ static int spartan3_sp_dump(xilinx_desc *desc, const void *buf, size_t bsize)
+ 
+ 		/* dump the data */
+ 		while (bytecount < bsize) {
+-			/* XXX - do we check for an Ctrl-C press in here ??? */
++#ifdef CONFIG_SYS_FPGA_CHECK_CTRLC
++			if (ctrlc ()) {
++				(*fn->abort) (cookie);
++				return FPGA_FAIL;
++			}
++#endif
+ 
+ 			(*fn->clk) (false, true, cookie);	/* Deassert the clock pin */
+ 			(*fn->clk) (true, true, cookie);	/* Assert the clock pin */
+@@ -376,6 +388,12 @@ static int spartan3_ss_load(xilinx_desc *desc, const void *buf, size_t bsize)
+ 			(*fn->bwr) (data, bsize, true, cookie);
+ 		else {
+ 			while (bytecount < bsize) {
++#ifdef CONFIG_SYS_FPGA_CHECK_CTRLC
++				if (ctrlc ()) {
++					(*fn->abort) (cookie);
++					return FPGA_FAIL;
++				}
++#endif
+ 
+ 				/* Xilinx detects an error if INIT goes low (active)
+ 				   while DONE is low (inactive) */
+diff --git a/include/fpga.h b/include/fpga.h
+index d768fb1..b000b86 100644
+--- a/include/fpga.h
++++ b/include/fpga.h
+@@ -16,7 +16,7 @@
+ 
+ /* fpga_xxxx function return value definitions */
+ #define FPGA_SUCCESS		0
+-#define FPGA_FAIL		-1
++#define FPGA_FAIL		1
+ 
+ /* device numbers must be non-negative */
+ #define FPGA_INVALID_DEVICE	-1
+-- 
+2.9.3
+

@@ -1,0 +1,380 @@
+From 430864f205272e6793d92a9a631d7fb8b5e9b8e4 Mon Sep 17 00:00:00 2001
+From: Eric Jarrige <eric.jarrige@armadeus.org>
+Date: Thu, 6 Apr 2017 10:44:19 +0200
+Subject: [PATCH 6/9] apf27: refactoring to fix SPL boot failure
+
+This patch fix SPL boot failure with recent version of U-Boot by
+refacting the APF27 SPL boot process:
+
+- move SDRAM init to board_init_f() according to U-Boot requirement
+- relocate SPL to mx27 IRAM instead of SDRAM
+---
+ board/armadeus/apf27/Kconfig         |   9 +++
+ board/armadeus/apf27/apf27.c         |  83 +++++++++++++++++----
+ board/armadeus/apf27/config.mk       |  24 ++++++
+ board/armadeus/apf27/lowlevel_init.S | 141 ++++++++++-------------------------
+ configs/apf27_defconfig              |   5 +-
+ include/configs/apf27.h              |   7 +-
+ 6 files changed, 151 insertions(+), 118 deletions(-)
+ create mode 100644 board/armadeus/apf27/config.mk
+
+diff --git a/board/armadeus/apf27/Kconfig b/board/armadeus/apf27/Kconfig
+index 65544a8..fe067e4 100644
+--- a/board/armadeus/apf27/Kconfig
++++ b/board/armadeus/apf27/Kconfig
+@@ -12,4 +12,13 @@ config SYS_SOC
+ config SYS_CONFIG_NAME
+ 	default "apf27"
+ 
++config SPL_HAB_VECTORS_OFFSET
++	int "HAB vectors offset in Flash memory"
++	default 1024
++
++config SPL_HAB_VECTORS_SIZE
++	int "HAB vectors size (bytes) in Flash memory"
++	default 8
++
++
+ endif
+diff --git a/board/armadeus/apf27/apf27.c b/board/armadeus/apf27/apf27.c
+index 16adf6e..9e83dc9 100644
+--- a/board/armadeus/apf27/apf27.c
++++ b/board/armadeus/apf27/apf27.c
+@@ -233,24 +233,81 @@ inline void hang(void)
+ 		;
+ }
+ 
+-void board_init_f(ulong bootflag)
++static void spl_dram_init(void)
+ {
++	volatile u32 i;
++	struct esdramc_regs *esdramc = (struct esdramc_regs *)IMX_ESD_BASE;
++
++	/* wait for SDRAM/LPDDR ready (SDRAMRDY) */
++	while (!(readl(&esdramc->esdmisc) & ESDMISC_SDRAM_RDY))
++		;
++
++	/* LPDDR Soft Reset Mobile/Low Power DDR SDRAM. */
++	writel(((ACFG_ESDMISC_VAL) | ESDMISC_MDDR_DL_RST), &esdramc->esdmisc);
++
++	/* Hold for more than 200ns */
++	for (i = 0x10000; i > 0; i--)
++		;
++
++	writel(ACFG_ESDMISC_VAL, &esdramc->esdmisc);
++
++	/* init 1st sdram */
++	writel(ACFG_SDRAM_ESDCFG_REGISTER_VAL, &esdramc->esdcfg0);
++
++	writel(ACFG_PRECHARGE_CMD, &esdramc->esdctl0);
++	writeb(0, PHYS_SDRAM_1 + ACFG_SDRAM_PRECHARGE_ALL_VAL);
++
++	writel(ACFG_AUTOREFRESH_CMD, &esdramc->esdctl0);
++
+ 	/*
+-	 * copy ourselves from where we are running to where we were
+-	 * linked at. Use ulong pointers as all addresses involved
+-	 * are 4-byte-aligned.
++	 * load loop counter and run auto-refresh cycle to array 0 on
++	 * CSD0 base address
+ 	 */
+-	ulong *start_ptr, *end_ptr, *link_ptr, *run_ptr, *dst;
+-	asm volatile ("ldr %0, =_start" : "=r"(start_ptr));
+-	asm volatile ("ldr %0, =_end" : "=r"(end_ptr));
+-	asm volatile ("ldr %0, =board_init_f" : "=r"(link_ptr));
+-	asm volatile ("adr %0, board_init_f" : "=r"(run_ptr));
+-	for (dst = start_ptr; dst < end_ptr; dst++)
+-		*dst = *(dst+(run_ptr-link_ptr));
++	for (i = 6; i > 0; i--)
++		writeb(0, PHYS_SDRAM_1);
++
++	writel(ACFG_SET_MODE_REG_CMD, &esdramc->esdctl0);
++
++	/* set standard mode register */
++	writeb(0, PHYS_SDRAM_1 + ACFG_SDRAM_MODE_REGISTER_VAL);
++
++	/* set extended mode register */
++	writeb(0, PHYS_SDRAM_1 + ACFG_SDRAM_EXT_MODE_REGISTER_VAL);
++
++	/*Back to normal SDRAM mode */
++	writel(ACFG_NORMAL_RW_CMD, &esdramc->esdctl0);
++
++	/* init 2nd sdram */
++	writel(ACFG_SDRAM_ESDCFG_REGISTER_VAL, &esdramc->esdcfg1);
++
++	writel(ACFG_PRECHARGE_CMD, &esdramc->esdctl1);
++	writeb(0, PHYS_SDRAM_2 + ACFG_SDRAM_PRECHARGE_ALL_VAL);
++
++	writel(ACFG_AUTOREFRESH_CMD, &esdramc->esdctl1);
+ 
+ 	/*
+-	 * branch to nand_boot's link-time address.
++	 * load loop counter and run auto-refresh cycle to array 0 on
++	 * CSD1 base address
+ 	 */
+-	asm volatile("ldr pc, =nand_boot");
++	for (i = 6; i > 0; i--)
++		writeb(0, PHYS_SDRAM_2);
++
++	writel(ACFG_SET_MODE_REG_CMD, &esdramc->esdctl1);
++
++	/* set standard mode register */
++	writeb(0, PHYS_SDRAM_2 + ACFG_SDRAM_MODE_REGISTER_VAL);
++
++	/* set extended mode register */
++	writeb(0, PHYS_SDRAM_2 + ACFG_SDRAM_EXT_MODE_REGISTER_VAL);
++
++	/*Back to normal SDRAM mode */
++	writel(ACFG_NORMAL_RW_CMD, &esdramc->esdctl1);
++}
++
++void board_init_f(ulong bootflag)
++{
++	spl_dram_init();
++
++	nand_boot();
+ }
+ #endif /* CONFIG_SPL_BUILD */
+diff --git a/board/armadeus/apf27/config.mk b/board/armadeus/apf27/config.mk
+new file mode 100644
+index 0000000..8ac4922
+--- /dev/null
++++ b/board/armadeus/apf27/config.mk
+@@ -0,0 +1,24 @@
++#
++# Copyright (C) 2017 Eric Jarrige <eric.jarrige@armadeus.org>
++#
++# SPDX-License-Identifier:    GPL-2.0+
++#
++
++# The u-boot-with-nohab-spl.bin build target inserts constant vectors
++# (0xFFFFFFFF) in u-boot-spl.bin to disable cpu HAB boot feature.
++# lowlevel_init will remove these vectors when relocating SPL code to
++# internal RAM.
++# 
++OBJCOPYFLAGS_u-boot-with-nohab-spl.bin = -I binary -O binary --pad-to=$(CONFIG_SPL_PAD_TO)
++
++u-boot-with-nohab-spl.bin: spl/u-boot-nohab-spl.bin u-boot.bin FORCE
++	$(call if_changed,pad_cat)
++
++quiet_cmd_u-boot-nohab-spl_bin = GEN    $@
++cmd_u-boot-nohab-spl_bin = (dd bs=$(CONFIG_SPL_HAB_VECTORS_OFFSET) count=1 if=$< 2>/dev/null && \
++	seq $(CONFIG_SPL_HAB_VECTORS_SIZE) | xargs -Iz printf '\xff' && \
++	dd bs=$(CONFIG_SPL_HAB_VECTORS_OFFSET) skip=1 if=$< 2>/dev/null) > $@
++
++spl/u-boot-nohab-spl.bin: spl/u-boot-spl.bin FORCE
++	$(call if_changed,u-boot-nohab-spl_bin)
++
+diff --git a/board/armadeus/apf27/lowlevel_init.S b/board/armadeus/apf27/lowlevel_init.S
+index 2f795e4..3d0e1b1 100644
+--- a/board/armadeus/apf27/lowlevel_init.S
++++ b/board/armadeus/apf27/lowlevel_init.S
+@@ -1,5 +1,6 @@
+ /*
+  * (C) Copyright 2013 Philippe Reynes <tremyfr@yahoo.fr>
++ * (C) Copyright 2017 Eric Jarrige <eric.jarrige@armadeus.org>
+  *
+  * SPDX-License-Identifier:	GPL-2.0+
+  */
+@@ -19,7 +20,7 @@
+ 	write32 AIPI2_PSR0, ACFG_AIPI2_PSR0_VAL
+ 	write32 AIPI2_PSR1, ACFG_AIPI2_PSR1_VAL
+ 
+-	/* Change SDRAM signal strengh */
++	/* Init Clock gating values and SDRAM signal strengh */
+ 	ldr r0, =GPCR
+ 	ldr r1, =ACFG_GPCR_VAL
+ 	ldr r5, [r0]
+@@ -47,7 +48,7 @@
+ 	 * add some delay here
+ 	 */
+ 	mov r1, #0x1000
+-	1:  subs r1, r1, #0x1
++1:	subs r1, r1, #0x1
+ 	bne 1b
+ 
+ 	/* peripheral clock divider */
+@@ -60,108 +61,46 @@
+ 
+ 	.endm /* init_clock */
+ 
+-	.macro init_ddr
+-	/* wait for SDRAM/LPDDR ready (SDRAMRDY) */
+-	ldr		r0, =IMX_ESD_BASE
+-	ldr		r4, =ESDMISC_SDRAM_RDY
+-2:	ldr		r1, [r0, #ESDMISC_ROF]
+-	ands		r1, r1, r4
+-	bpl		2b
+-
+-	/* LPDDR Soft Reset Mobile/Low Power DDR SDRAM. */
+-	ldr		r0, =IMX_ESD_BASE
+-	ldr		r4, =ACFG_ESDMISC_VAL
+-	orr		r1, r4, #ESDMISC_MDDR_DL_RST
+-	str		r1, [r0, #ESDMISC_ROF]
+-
+-	/* Hold for more than 200ns */
+-	ldr		r1, =0x10000
+-1:	subs		r1, r1, #0x1
+-	bne		1b
+-
+-	str		r4, [r0]
+-
+-	ldr		r0, =IMX_ESD_BASE
+-	ldr		r1, =ACFG_SDRAM_ESDCFG_REGISTER_VAL
+-	str		r1, [r0, #ESDCFG0_ROF]
+-
+-	ldr		r0, =IMX_ESD_BASE
+-	ldr		r1, =ACFG_PRECHARGE_CMD
+-	str		r1, [r0, #ESDCTL0_ROF]
+-
+-	/* write8(0xA0001000, any value) */
+-	ldr		r1, =PHYS_SDRAM_1+ACFG_SDRAM_PRECHARGE_ALL_VAL
+-	strb		r2, [r1]
+-
+-	ldr		r1, =ACFG_AUTOREFRESH_CMD
+-	str		r1, [r0, #ESDCTL0_ROF]
+-
+-	ldr 		r4, =PHYS_SDRAM_1	/* CSD0 base address	*/
+-
+-	ldr 		r6,=0x7		/* load loop counter	*/
+-1:	str 		r5,[r4]		/* run auto-refresh cycle to array 0 */
+-	subs 		r6,r6,#1
+-	bne 1b
+-
+-	ldr		r1, =ACFG_SET_MODE_REG_CMD
+-	str		r1, [r0, #ESDCTL0_ROF]
+-
+-	/* set standard mode register */
+-	ldr		r4, = PHYS_SDRAM_1+ACFG_SDRAM_MODE_REGISTER_VAL
+-	strb		r2, [r4]
+-
+-	/* set extended mode register */
+-	ldr		r4, =PHYS_SDRAM_1+ACFG_SDRAM_EXT_MODE_REGISTER_VAL
+-	strb		r5, [r4]
+-
+-	ldr		r1, =ACFG_NORMAL_RW_CMD
+-	str		r1, [r0, #ESDCTL0_ROF]
+-
+-	/* 2nd sdram */
+-	ldr		r0, =IMX_ESD_BASE
+-	ldr		r1, =ACFG_SDRAM_ESDCFG_REGISTER_VAL
+-	str		r1, [r0, #ESDCFG1_ROF]
+-
+-	ldr		r0, =IMX_ESD_BASE
+-	ldr		r1, =ACFG_PRECHARGE_CMD
+-	str		r1, [r0, #ESDCTL1_ROF]
+-
+-	/* write8(0xB0001000, any value) */
+-	ldr		r1, =PHYS_SDRAM_2+ACFG_SDRAM_PRECHARGE_ALL_VAL
+-	strb		r2, [r1]
+-
+-	ldr		r1, =ACFG_AUTOREFRESH_CMD
+-	str		r1, [r0, #ESDCTL1_ROF]
+-
+-	ldr 		r4, =PHYS_SDRAM_2	/* CSD1 base address */
+-
+-	ldr 		r6,=0x7		/* load loop counter */
+-1:	str 		r5,[r4]		/* run auto-refresh cycle to array 0 */
+-	subs 		r6,r6,#1
+-	bne 1b
+-
+-	ldr		r1, =ACFG_SET_MODE_REG_CMD
+-	str		r1, [r0, #ESDCTL1_ROF]
+-
+-	/* set standard mode register */
+-	ldr		r4, =PHYS_SDRAM_2+ACFG_SDRAM_MODE_REGISTER_VAL
+-	strb		r2, [r4]
+-
+-	/* set extended mode register */
+-	ldr		r4, =PHYS_SDRAM_2+ACFG_SDRAM_EXT_MODE_REGISTER_VAL
+-	strb		r2, [r4]
+-
+-	ldr		r1, =ACFG_NORMAL_RW_CMD
+-	str		r1, [r0, #ESDCTL1_ROF]
+-	.endm /* init_ddr */
+-
+ .globl lowlevel_init
+ lowlevel_init:
+-
+ 	init_aipi
+ 	init_clock
++
+ #ifdef CONFIG_SPL_BUILD
+-	init_ddr
+-#endif
++	/* SPL may have to be relocated */
++	ldr	r1, =CONFIG_SPL_TEXT_BASE
++	adr	r0, lowlevel_init
++	add	r0, r0, r1
++	ldr	r4, =lowlevel_init
++	subs	r0, r0, r4
++
++	/* already relocated ? */
++	cmp	r0, r1
++	beq	3f
++
++	/* relocate SPL first part */ 
++	ldr	r2, =(CONFIG_SPL_TEXT_BASE+CONFIG_SPL_HAB_VECTORS_OFFSET)
++
++1:	ldmia	r0!, {r10-r11}
++	stmia	r1!, {r10-r11}
++	cmp	r1, r2
++	blo	1b
++
++	/* do not relocate HAB boot vectors if present (0xFFFFFFFF) */
++	ldr	r2, [r0]
++	cmp	r2,#0xFFFFFFFF
++	addeq	r0, r0, #(CONFIG_SPL_HAB_VECTORS_SIZE)
++
++	/* relocate rest of SPL */ 
++	ldr	r2, =(CONFIG_SPL_TEXT_BASE+CONFIG_SPL_MAX_SIZE)
++
++2:	ldmia	r0!, {r10-r11}
++	stmia	r1!, {r10-r11}
++	cmp	r1, r2
++	blo	2b
++
++	/* Jump to relocated SPL */
++	ldr	lr, =CONFIG_SPL_TEXT_BASE
++#endif /* CONFIG_SPL_BUILD */
++3:	mov	pc, lr
+ 
+-	mov	pc, lr
+diff --git a/configs/apf27_defconfig b/configs/apf27_defconfig
+index 071ff7f..b4834b2 100644
+--- a/configs/apf27_defconfig
++++ b/configs/apf27_defconfig
+@@ -3,7 +3,10 @@ CONFIG_ARM=y
+ CONFIG_TARGET_APF27=y
+ CONFIG_SPL_SERIAL_SUPPORT=y
+ CONFIG_SPL_NAND_SUPPORT=y
+-CONFIG_IDENT_STRING=" apf27 patch 3.10"
++CONFIG_SPL_SERIAL_SUPPORT=y
++CONFIG_SPL_HAB_VECTORS_OFFSET=1024
++CONFIG_SPL_HAB_VECTORS_SIZE=8
++CONFIG_IDENT_STRING=" apf27 patch 4.00"
+ CONFIG_BOOTDELAY=5
+ CONFIG_VERSION_VARIABLE=y
+ CONFIG_SPL=y
+diff --git a/include/configs/apf27.h b/include/configs/apf27.h
+index 513f9ee..af5d102 100644
+--- a/include/configs/apf27.h
++++ b/include/configs/apf27.h
+@@ -26,10 +26,11 @@
+ /*
+  * SPL
+  */
+-#define CONFIG_SPL_TARGET	"u-boot-with-spl.bin"
++#define CONFIG_SPL_TARGET	"u-boot-with-nohab-spl.bin"
+ #define CONFIG_SPL_LDSCRIPT	"arch/$(ARCH)/cpu/u-boot-spl.lds"
+-#define CONFIG_SPL_MAX_SIZE	2048
+-#define CONFIG_SPL_TEXT_BASE    0xA0000000
++#define CONFIG_SPL_MAX_SIZE	0x800
++#define CONFIG_SPL_TEXT_BASE	0xFFFF4C00
++#define CONFIG_SPL_STACK	0xFFFFF800
+ 
+ /* NAND boot config */
+ #define CONFIG_SYS_NAND_U_BOOT_START    CONFIG_SYS_TEXT_BASE
+-- 
+2.9.3
+

@@ -1,0 +1,254 @@
+/*
+ * Copyright 2013 Armadeus Systems - <support@armadeus.com>
+ * Copyright 2016 Julien Corjon <corjon.j@ecagroup.com>
+ *
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
+ *
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
+ */
+/dts-v1/;
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/gpio/gpio.h>
+#include "imx27-apf27.dtsi"
+
+/ {
+	model = "Armadeus APF27_Dev_Full kit";
+	compatible = "armadeus,imx27-apf27_dev_full", "armadeus,imx27-apf27", "fsl,imx27";
+
+	chosen {
+                bootargs = "console=ttymxc0,115200 video=imxfb:Chimei-LW700AT9003 ubi.mtd=rootfs root=ubi0:rootfs rootfstype=ubifs";
+        };
+
+	clocks {
+		clk16m: clk16m {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-output-names = "mcp2515-osc";
+			clock-frequency = <16000000>;
+		};
+	};
+
+	display: Chimei-LW700AT9003 {
+		model = "Chimei-LW700AT9003";
+		native-mode = <&timing0>;
+		bits-per-pixel = <16>;
+		fsl,pcr = <0xfae80083>;
+		display-timings {
+			timing0: 800x480 {
+				clock-frequency = <33000033>;
+				hactive = <800>;
+				vactive = <480>;
+				hback-porch = <96>;
+				hfront-porch = <96>;
+				vback-porch = <20>;
+				vfront-porch = <21>;
+				hsync-len = <64>;
+				vsync-len = <4>;
+			};
+		};
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_gpio_keys>;
+
+		user-key {
+			label = "user";
+			gpios = <&gpio6 13 GPIO_ACTIVE_HIGH>;
+			linux,code = <BTN_EXTRA>;
+			gpio-key,wakeup;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_gpio_leds>;
+
+		led1 {
+			label = "system::live";
+			gpios = <&gpio6 14 GPIO_ACTIVE_LOW>;
+			linux,default-trigger = "heartbeat";
+		};
+	};
+
+	regulators {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		reg_max5821: regulator@0 {
+			compatible = "regulator-fixed";
+			reg = <0>;
+			regulator-name = "max5821-reg";
+			regulator-min-microvolt = <2500000>;
+			regulator-max-microvolt = <2500000>;
+			regulator-always-on;
+		};
+
+		reg_dn_pwr: dn_pwr {
+			compatible = "regulator-fixed";
+			pinctrl-names = "default";
+			pinctrl-0 = <&pinctrl_dn_pwr>;
+			regulator-name = "dn_pwr";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			gpio = <&gpio6 16 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+	};
+
+	usbphy {
+		usbphy1: usbphy@1 {
+			compatible = "usb-nop-xceiv";
+			reg = <1>;
+			vcc-supply = <&reg_5v0>;
+			clocks = <&clks IMX27_CLK_DUMMY>;
+			clock-names = "main_clk";
+		};
+	};
+};
+
+&cspi1
+{
+	status = "okay";
+
+	adc: max1027@0 {
+		compatible = "maxim,max1027";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_max1027>;
+		reg = <0>;
+		interrupt-parent = <&gpio5>;
+		interrupts = <15 IRQ_TYPE_EDGE_FALLING>;
+		spi-max-frequency = <10000000>;
+	};
+};
+
+&cspi2
+{
+	status = "okay";
+
+	touchscreen: tsc2101@0 {
+		compatible = "tsc210x";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_tsc2101_int>;
+		reg = <0>;
+		spi-max-frequency = <8000000>;
+		spi-cpol = <0>;
+		spi-cpha = <0>;
+		tsc210x-mclk = <12288000>;
+		tsc210x-use_internal = <1>;
+		tsc210x-monitor = <21>;
+		tsc210x-irq = <257>;
+
+	};
+
+	can: mcp2515@1 {
+		compatible = "microchip,mcp2515";
+		pinctrl-names = "default";
+		spi-max-frequency = <10000000>;
+		reg = <1>;
+		clocks = <&clk16m>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <19 IRQ_TYPE_EDGE_FALLING>;
+	};
+};
+
+&fb {
+	display = <&display>;
+	fsl,lpccr = <0x00a90580>;
+	fsl,dmacr = <0x00020010>;
+	lcd-supply = <&reg_dn_pwr>;
+	status = "okay";
+};
+
+&i2c1{
+	clock-frequency = <400000>;
+	status="okay";
+
+	dac: max5821@38 {
+		compatible = "maxim,max5821";
+		reg = <0x38>;
+		vref-supply = <&reg_max5821>;
+	};
+
+	rtc0: ds1374@68 {
+		compatible = "dallas,ds1374";
+		reg = <0x68>;
+	};
+};
+
+&i2c2 {
+	hdmi: ad9889@72 {
+		compatible = "adi,ad9889";
+		reg = <0x72>;
+	};
+};
+
+&iomuxc {
+	imx27-apf27dev {
+		pinctrl_gpio_leds: gpioledsgrp {
+			fsl,pins = <
+				MX27_PAD_PC_VS1__GPIO6_14 	0x0
+			>;
+		};
+
+		pinctrl_gpio_keys: gpiokeysgrp {
+			fsl,pins = <
+				MX27_PAD_PC_VS2__GPIO6_13 	0x0
+			>;
+		};
+
+		pinctrl_max1027: max1027 {
+			fsl,pins = <
+				 MX27_PAD_UART1_CTS__GPIO5_14 	0x0 /* CNVST */
+				 MX27_PAD_UART1_RTS__GPIO5_15 	0x0 /* EOC */
+			>;
+		};
+
+		pinctrl_sdhc2_cd: sdhc2cdgrp {
+			fsl,pins = <
+				MX27_PAD_TOUT__GPIO3_14 	0x0
+			>;
+		};
+
+		pinctrl_tsc2101_int: tsc2101intgrp {
+			fsl,pins = <
+				MX27_PAD_PC_READY__GPIO6_17	0x0
+			>;
+		};
+
+		pinctrl_dn_pwr: dnpwrgrp {
+			fsl,pins = <
+				MX27_PAD_PC_PWRON__GPIO6_16	0x0
+			>;
+		};
+	};
+};
+
+&sdhci2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sdhc2 &pinctrl_sdhc2_cd>;
+	vmmc-supply = <&reg_dn_pwr>;
+	cd-gpios = <&gpio3 14 GPIO_ACTIVE_LOW>;
+	cd-inverted;
+	status = "okay";
+};
+
+&usbh1 {
+	dr_mode = "host";
+	phy_type = "serial";
+	vbus-supply = <&reg_usb_pwr>;
+	fsl,usbphy = <&usbphy1>;
+	sic = <0>;
+	disable-tll;
+	status = "okay";
+};
+
+&usbotg {
+	status = "okay";
+};

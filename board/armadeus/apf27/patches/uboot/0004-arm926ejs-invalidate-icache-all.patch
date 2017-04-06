@@ -1,0 +1,35 @@
+From e4580c1aa56137800a59b380248a8f6e00b82145 Mon Sep 17 00:00:00 2001
+From: Julien Corjon <corjon.j@ecagroup.com>
+Date: Thu, 6 Apr 2017 10:43:05 +0200
+Subject: [PATCH 4/9] arm926ejs: invalidate icache all
+
+---
+ arch/arm/cpu/arm926ejs/cache.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/arch/arm/cpu/arm926ejs/cache.c b/arch/arm/cpu/arm926ejs/cache.c
+index 02cb24c..5b8cfd8 100644
+--- a/arch/arm/cpu/arm926ejs/cache.c
++++ b/arch/arm/cpu/arm926ejs/cache.c
+@@ -57,6 +57,18 @@ void flush_dcache_all(void)
+ }
+ #endif /* #ifndef CONFIG_SYS_DCACHE_OFF */
+ 
++#ifndef CONFIG_SYS_ICACHE_OFF
++/* Invalidate entire I-cache and branch predictor array */
++void invalidate_icache_all(void)
++{
++	asm ("mcr p15, 0, %0, c7, c5, 0" : : "r"(0));
++}
++#else
++void invalidate_icache_all(void)
++{
++}
++#endif
++
+ /*
+  * Stub implementations for l2 cache operations
+  */
+-- 
+2.9.3
+
